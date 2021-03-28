@@ -5,6 +5,8 @@ From Pat:
 > I've added the extended token filtering to SLPDB to allow for dedicated token instances https://github.com/mainnet-pat/slpdb/tree/sfilt 
 See the deployed waifu only instance http://slpserve.waifu.camp
 
+[This filter example](https://github.com/mainnet-pat/SLPDB/blob/c427283d851fb6bf52920ee67c0c3e93dc900150/example-filters.yml#L9-L24) shows how to use the new filter options to filter NFTs.
+
 -----
 
 ![SLPDB](assets/slpdb_logo.png)
