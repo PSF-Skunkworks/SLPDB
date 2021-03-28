@@ -1,3 +1,12 @@
+**5/28/21 CT:** Forked from [Pat's Fork](https://github.com/mainnet-pat/slpdb/tree/sfilt):
+
+From Pat:
+
+> I've added the extended token filtering to SLPDB to allow for dedicated token instances https://github.com/mainnet-pat/slpdb/tree/sfilt 
+See the deployed waifu only instance http://slpserve.waifu.camp
+
+-----
+
 ![SLPDB](assets/slpdb_logo.png)
 
 # SLPDB Readme
