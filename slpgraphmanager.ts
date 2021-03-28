@@ -1,5 +1,5 @@
 import { SlpTokenGraph } from "./slptokengraph";
-import { TokenDBObject, GraphTxnDbo } from "./interfaces";
+import { TokenDBObject, GraphTxnDbo, TokenCacheItem } from "./interfaces";
 import { SlpTransactionType, Slp, SlpTransactionDetails, SlpVersionType } from "slpjs";
 import { Bit } from "./bit";
 import { Query } from "./query";
@@ -29,6 +29,7 @@ export class SlpGraphManager {
     slp = new Slp(bitcoin);
     db: Db;
     _tokens!: Map<string, SlpTokenGraph>;
+    _tokenCache!: Map<string, TokenCacheItem>;
     zmqPubSocket?: zmq.Socket;
     _zmqMempoolPubSetList = new CacheSet<string>(1000);
     _TnaQueue?: pQueue<pQueue.DefaultAddOptions>;
@@ -51,9 +52,6 @@ export class SlpGraphManager {
     async getTokenGraph({ tokenIdHex, slpMsgDetailsGenesis, forceValid, blockCreated, nft1ChildParentIdHex, txid }: { tokenIdHex: string, slpMsgDetailsGenesis?: SlpTransactionDetails, forceValid?: boolean, blockCreated?: number, nft1ChildParentIdHex?: string, txid?: string }): Promise<SlpTokenGraph|null> {
 
         let filter = TokenFilters();
-        if (!filter.passesAllFilterRules(tokenIdHex)) {
-            throw Error("Token is filtered and will not be processed, even though it's graph may be loaded.")
-        }
 
         if (! this._tokens.has(tokenIdHex)) {
 
@@ -63,6 +61,10 @@ export class SlpGraphManager {
 
             if (slpMsgDetailsGenesis.transactionType !== SlpTransactionType.GENESIS) {
                 throw Error(`Missing token details for a non-GENESIS transaction (Id: ${tokenIdHex}, txid: ${txid}).`);
+            }
+
+            if (!filter.passesAllFilterRules(slpMsgDetailsGenesis)) {
+                throw Error("Token is filtered and will not be processed, even though it's graph may be loaded.")
             }
 
             let tg = new SlpTokenGraph(slpMsgDetailsGenesis, this, blockCreated!, null);
@@ -76,6 +78,7 @@ export class SlpGraphManager {
                 await tg.setNftParentId();
             }
 
+            let tokenCahceItem: TokenCacheItem = tg._tokenDetails;
             // If NFT child, then we need make sure the child's validation cache object is from the parent graph
             if (tg._nftParentId) {
                 let ptg = await this.getTokenGraph({ tokenIdHex: tg._nftParentId });
@@ -83,6 +86,8 @@ export class SlpGraphManager {
                     throw Error("this should never happen");
                 }
                 tg._slpValidator.cachedValidations = ptg._slpValidator.cachedValidations;
+
+                tokenCahceItem.nftParentId = tg._nftParentId;
             }
 
             if (forceValid) {
@@ -91,10 +96,15 @@ export class SlpGraphManager {
                 return null;
             }
             this._tokens.set(tokenIdHex, tg);
+            this._tokenCache.set(tokenIdHex, tokenCahceItem);
 
         } else if (! this._tokens.get(tokenIdHex)!._lazilyLoaded && ! this._tokens.get(tokenIdHex)!._loadInitiated) {
 
             let tg = this._tokens.get(tokenIdHex!);
+
+            if (!filter.passesAllFilterRules(tg!._tokenDetails)) {
+                throw Error("Token is filtered and will not be processed, even though it's graph may be loaded.")
+            }
 
             let lastPrunedHeight = tg!._tokenDbo!._pruningState.pruneHeight;
             let checkpoint = await Info.getBlockCheckpoint();
@@ -273,6 +283,7 @@ export class SlpGraphManager {
         this._bestBlockHeight = currentBestHeight;
         this._network = network;
         this._tokens = new Map<string, SlpTokenGraph>();
+        this._tokenCache = new Map<string, TokenCacheItem>();
         this._bit = bit;
         this._startupTokenCount = 0
     }
@@ -319,14 +330,18 @@ export class SlpGraphManager {
 
                 let tokenIdHex = tokenDbo.tokenDetails.tokenIdHex;
 
-                let filter = TokenFilters();
-                if (!filter.passesAllFilterRules(tokenIdHex)) {
-                    throw Error("Token is filtered and will not be processed, even though it's graph may be loaded.")
-                }
-
                 let tokenDetails = SlpTokenGraph.MapDbTokenDetailsFromDbo(tokenDbo.tokenDetails, tokenDbo.tokenDetails.decimals);
                 if (! tokenDetails) {
                     throw Error(`Token details for a new token GENESIS must be provided (Id: ${tokenIdHex}).`);
+                }
+                let tokenCacheItem: TokenCacheItem = tokenDetails;
+                if (tokenDetails.versionType === SlpVersionType.TokenVersionType1_NFT_Child) {
+                    tokenCacheItem.nftParentId = tokenDbo.nftParentId;
+                }
+
+                let filter = TokenFilters();
+                if (!filter.passesAllFilterRules(tokenDetails)) {
+                    throw Error("Token is filtered and will not be processed, even though it's graph may be loaded.")
                 }
 
                 if (tokenDetails.transactionType !== SlpTransactionType.GENESIS) {
@@ -334,10 +349,12 @@ export class SlpGraphManager {
                 }
 
                 let graph = new SlpTokenGraph(tokenDetails, this, tokenDbo.tokenStats.block_created!, tokenDbo);
+
                 if (tokenDetails.versionType === SlpVersionType.TokenVersionType1_NFT_Child) {
                     graph._nftParentId = tokenDbo.nftParentId;
                 }
                 this._tokens.set(tokenDbo.tokenDetails.tokenIdHex, graph);
+                this._tokenCache.set(tokenDbo.tokenDetails.tokenIdHex, tokenCacheItem);
 
                 console.log(`[INFO] Loaded ${tokenIdHex}.`);
                 count++;

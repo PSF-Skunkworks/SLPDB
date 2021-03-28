@@ -30,6 +30,10 @@ export interface GraphTxnInput {
     bchSatoshis: number;
 }
 
+export interface TokenCacheItem extends SlpTransactionDetails {
+    nftParentId?: string;
+}
+
 export interface TokenStatsDbo {
     block_created: number|null;
     approx_txns_since_genesis: number|null;

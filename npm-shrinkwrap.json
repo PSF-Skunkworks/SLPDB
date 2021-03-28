@@ -1,6 +1,6 @@
 {
   "name": "slpdb",
-  "version": "1.0.0-beta-rc13",
+  "version": "1.0.0",
   "lockfileVersion": 1,
   "requires": true,
   "dependencies": {
@@ -804,9 +804,8 @@
       }
     },
     "bchaddrjs-slp": {
-      "version": "0.2.8",
-      "resolved": "https://registry.npmjs.org/bchaddrjs-slp/-/bchaddrjs-slp-0.2.8.tgz",
-      "integrity": "sha512-Is4NQG0xhrmW8ml40n8IjQzYlg1gMqst2RkF20SWjuhiSA8VDx1F53krthFqZFp5hpB+Ig/NPx6NX4VEH9W32Q==",
+      "version": "git+https://github.com/mainnet-pat/bchaddrjs.git#cfdc39804614fb080f842f455692fb13d868b258",
+      "from": "git+https://github.com/mainnet-pat/bchaddrjs.git",
       "requires": {
         "bs58check": "^2.1.2",
         "cashaddrjs-slp": "^0.2.12"
@@ -7634,6 +7633,15 @@
         "slp-mdm": "0.0.6"
       },
       "dependencies": {
+        "bchaddrjs-slp": {
+          "version": "0.2.8",
+          "resolved": "https://registry.npmjs.org/bchaddrjs-slp/-/bchaddrjs-slp-0.2.8.tgz",
+          "integrity": "sha512-Is4NQG0xhrmW8ml40n8IjQzYlg1gMqst2RkF20SWjuhiSA8VDx1F53krthFqZFp5hpB+Ig/NPx6NX4VEH9W32Q==",
+          "requires": {
+            "bs58check": "^2.1.2",
+            "cashaddrjs-slp": "^0.2.12"
+          }
+        },
         "lodash": {
           "version": "4.17.20",
           "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.17.20.tgz",

@@ -7,7 +7,7 @@ import * as pQueue from 'p-queue';
 import * as zmq from 'zeromq';
 import { BITBOX } from 'bitbox-sdk';
 import * as bitcore from 'bitcore-lib-cash';
-import { Primatives, SlpTransactionType, SlpTransactionDetails, Validation } from 'slpjs';
+import { Primatives, SlpTransactionType, SlpTransactionDetails, Validation, SlpVersionType } from 'slpjs';
 import { RpcClient } from './rpc';
 import { CacheSet, CacheMap } from './cache';
 import { SlpGraphManager, SlpTransactionDetailsTnaDbo } from './slpgraphmanager';
@@ -22,6 +22,7 @@ import { PruneStack } from './prunestack';
 import { TokenFilters } from './filters';
 
 import { GrpcClient } from 'grpc-bchrpc-node';
+import { TokenCacheItem } from './interfaces';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const slpLokadIdHex = "534c5000";
@@ -80,7 +81,7 @@ export class Bit {
         this._exit = true;
     }
 
-    applySlpTxnFilter(txn: string|Buffer): { txn: bitcore.Transaction, slpMsg: SlpTransactionDetails } | null {
+    async applySlpTxnFilter(txn: string|Buffer): Promise<{ txn: bitcore.Transaction, slpMsg: SlpTransactionDetails } | null> {
         let isSlp = false;
         if (typeof txn !== "string") {
             isSlp = (txn as Buffer).includes(Buffer.from(slpLokadIdHex, "hex"));
@@ -98,11 +99,36 @@ export class Bit {
         } catch (_) {
             return null;
         }
-        if (slpMsg.transactionType === "GENESIS") {
-            slpMsg.tokenIdHex = deserialized.hash;
-        }
+
         let filter = TokenFilters();
-        if (slpMsg.tokenIdHex && !filter.passesAllFilterRules(slpMsg.tokenIdHex)) {
+        if (slpMsg.transactionType === "GENESIS") {
+            const tokenCacheItem: TokenCacheItem = slpMsg;
+            if (slpMsg.versionType === SlpVersionType.TokenVersionType1_NFT_Child) {
+                try {
+                    const previousTxId: string = deserialized.inputs[0].prevTxId.toString('hex');
+                    const previousTx: string = await RpcClient.getRawTransaction(previousTxId);
+
+                    const previousTxDeserialized = new bitcore.Transaction(previousTx);
+                    const previousSlpMsg = this._slpGraphManager.slp.parseSlpOutputScript(previousTxDeserialized.outputs[0]._scriptBuffer);
+                    if (previousSlpMsg.transactionType === SlpTransactionType.GENESIS) {
+                        tokenCacheItem.nftParentId = previousTxId;
+                    } else {
+                        tokenCacheItem.nftParentId = previousSlpMsg.tokenIdHex;
+                    }
+                } catch (_) {
+                    return null;
+                }
+            }
+            slpMsg.tokenIdHex = deserialized.hash;
+            if (slpMsg.tokenIdHex && filter.passesAllFilterRules(slpMsg)) {
+                this._slpGraphManager._tokenCache.set(deserialized.hash, tokenCacheItem);
+            }
+        } else {
+            if (this._slpGraphManager._tokenCache.has(slpMsg.tokenIdHex)) {
+                slpMsg = this._slpGraphManager._tokenCache.get(slpMsg.tokenIdHex)!;
+            }
+        }
+        if (slpMsg.tokenIdHex && !filter.passesAllFilterRules(slpMsg)) {
             console.log("[INFO] SLP txn filtered and ignored:", deserialized.hash);
             return null;
         }
@@ -194,7 +220,7 @@ export class Bit {
                 g.scanDoubleSpendTxids(txidToDelete);
             }
         }
-        let res = this.applySlpTxnFilter(txnBuf);
+        let res = await this.applySlpTxnFilter(txnBuf);
         if (res) {
             RpcClient.loadTxnIntoCache(txid, txnBuf);
             this.slpMempool.set(txid, txnBuf.toString("hex"));
@@ -228,7 +254,7 @@ export class Bit {
         const mempoolSlpTxs = new Map<string, { deserialized: bitcore.Transaction, serialized: Buffer}>();
         for (let txid of currentBchMempoolList) {
             const serialized: Buffer = Buffer.from(await RpcClient.getRawTransaction(txid), "hex");
-            let res = this.applySlpTxnFilter(serialized);
+            let res = await this.applySlpTxnFilter(serialized);
             if (res) {
                 // @ts-ignore
                 let deserialized = res.txn;
@@ -277,13 +303,13 @@ export class Bit {
         const blockTxCache = new Map<string, { deserialized: bitcore.Transaction, serialized: Buffer}>();
         const spentOutpoints: [string,Uint8Array][] = [];
         console.log(`[DEBUG] Block ${blockContent.hash} has ${block.txs.length} txns`);
-        block.txs.forEach((t: any, i: number) => {
+        for (const t of block.txs) {
             const serialized: Buffer = t.toRaw();
             const hash = t.hash().reverse();
             for (let input of t.inputs) {
                 spentOutpoints.push([input.prevout.hash.reverse().toString("hex")+":"+input.prevout.index, hash]);
             }
-            let res = this.applySlpTxnFilter(serialized);
+            let res = await this.applySlpTxnFilter(serialized);
             if (res) {
                 // @ts-ignore
                 const deserialized = res.txn;
@@ -297,9 +323,10 @@ export class Bit {
                     // TODO: Scan for SLP token burns elsewhere... for all block transactoins (is this being done already somewhere else?)
                 });
             }
-        });
+        };
         let stack: string[] = [];
         await this.topologicalSort(blockTxCache, stack);
+        console.log(stack.length, blockTxCache.size);
         if (stack.length !== blockTxCache.size) {
             throw Error("Transaction count is incorrect after topological sorting.");
         }
@@ -686,7 +713,7 @@ export class Bit {
                     if (!txhex) {
                         throw Error("Must provide 'txhex' if txid is not in the SLP mempool");
                     }
-                    let res = self.applySlpTxnFilter(txhex);
+                    let res = await self.applySlpTxnFilter(txhex);
                     if (res) {
                         txn = res.txn;
                     }
