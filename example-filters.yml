@@ -5,3 +5,20 @@ tokens:
     - name: SPICE
       type: include-single
       info: 4de69e374a8ed21cbddd47f2338cc0f479dc58daa2bbe11cd604ca488eca0ddf
+
+# Custom whitelist filters
+# name, type and info are there for backward compatibility
+# 
+# custom attributes supported: 
+# `tokenId` - match token by exact tokenId. If not set, will be taken from `info`
+# `tokenSymbol` - match token ticker. If not set, will be taken from `name`
+# `tokenName` - match token name.
+# `tokenType` - match token type. 1 for simple SLP tokens, 129 for NFT parent, 65 for NFT child
+
+# Example for Waifu only + their parent
+    # - type: include-single
+    #   name: WGRP
+    #   info: a2987562a405648a6c5622ed6c205fca6169faa8afeb96a994b48010bd186a66
+    # - type: include-single
+    #   name: WAIFU
+    #   tokenType: 65

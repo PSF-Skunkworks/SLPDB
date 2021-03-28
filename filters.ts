@@ -1,35 +1,58 @@
 import * as yaml from 'js-yaml';
 import * as fs from 'fs';
+import { SlpTransactionDetails } from 'slpjs';
 
 class _TokenFilterRule {
-    name: string;
-    type: string;
-    info: string;
+    name!: string;
+    type!: string;
+    info!: string;
+    tokenId?: string;
+    tokenType?: number;
+    tokenSymbol?: string;
+    tokenName?: string;
 
-    constructor({ name, type, info }: { name: string, type: string, info: string }) {
-        this.name = name;
-        this.type = type;
-        this.info = info;
+    static fromObject(object: any) {
+        const rule = Object.assign(new _TokenFilterRule(), object);
+        if (!rule.tokenId) rule.tokenId = rule.info;
+        if (!rule.tokenSymbol) rule.tokenSymbol = rule.name;
+        return rule;
     }
 
-    include(tokenId: string) {
+    key() {
+        return JSON.stringify(this);
+    }
+
+    checkConditions(tokenDetails: SlpTransactionDetails) {
+        if (this.tokenId && this.tokenId !== tokenDetails.tokenIdHex) {
+            return false;
+        }
+
+        if (this.tokenType && this.tokenType !== tokenDetails.versionType) {
+            return false;
+        }
+
+        if (this.tokenSymbol && this.tokenSymbol !== tokenDetails.symbol) {
+            return false;
+        }
+
+        if (this.tokenType && this.tokenType !== tokenDetails.versionType) {
+            return false;
+        }
+
+
+        return true;
+    };
+
+    include(tokenDetails: SlpTransactionDetails) {
         if(this.type === 'include-single') {
-            if(tokenId === this.info) {
-                return true;
-            } else {
-                return false;
-            }
+            return this.checkConditions(tokenDetails);
         } else if(this.type === 'exclude-single') {
-            if(tokenId === this.info) {
-                return false;
-            } else {
-                return true;
-            }
+            return !this.checkConditions(tokenDetails);
         }
     }
 
-    exclude(tokenId: string) {
-        return !this.include(tokenId);
+    exclude(tokenDetails: SlpTransactionDetails) {
+        return !this.include(tokenDetails);
     }
 }
 
@@ -45,17 +68,18 @@ class _TokenFilter {
     constructor() {
         try {
             let o = yaml.safeLoad(fs.readFileSync('filters.yml', 'utf-8')) as { tokens: _TokenFilterRule[] };
-            o!.tokens.forEach((f: _TokenFilterRule) => {
-                this.addRule(new _TokenFilterRule({ info: f.info, name: f.name, type: f.type }));
-                console.log("[INFO] Loaded token filter:", f.name);
+            o!.tokens.forEach((f: any) => {
+                const rule = _TokenFilterRule.fromObject(f);
+                this.addRule(rule);
+                console.log("[INFO] Loaded token filter:", rule.name, rule.key());
             });
         } catch(e) {
-            console.log("[INFO] No token filters loaded.");
+            console.log("[INFO] No token filters loaded.", e);
         }
     }
 
     addRule(rule: _TokenFilterRule) {
-        if(this._rules.has(rule.info))
+        if(this._rules.has(rule.key()))
             return;
         if(rule.type === 'include-single') {
             if(this._hasExcludeSingle)
@@ -66,22 +90,23 @@ class _TokenFilter {
                 throw Error('Invalid combination of filter rules.  Filter already has include single rules added.');
             this._hasIncludeSingle = true;
         }
-        this._rules.set(rule.info, rule);
+        this._rules.set(rule.key(), rule);
     }
 
-    passesAllFilterRules(tokenId: string) {
+    passesAllFilterRules(tokenDetails: SlpTransactionDetails) {
         if(this._hasIncludeSingle) {
             let r = Array.from(this._rules).filter((v, i) => v[1].type === 'include-single');
             for(let i = 0; i < r.length; i++) {
-                if(r[i][1].type === 'include-single' && r[i][1].include(tokenId)) {
+                if(r[i][1].type === 'include-single' && r[i][1].include(tokenDetails)) {
                     return true;
                 }
             }
+
             return false;
         } else if(this._hasExcludeSingle) {
             let r = Array.from(this._rules).filter((v, i) => v[1].type === 'exclude-single');
             for(let i = 0; i < r.length; i++) {
-                if(r[i][1].type === 'exclude-single' && r[i][1].exclude(tokenId)) {
+                if(r[i][1].type === 'exclude-single' && r[i][1].exclude(tokenDetails)) {
                     return false;
                 }
             }

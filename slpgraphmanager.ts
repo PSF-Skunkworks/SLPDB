@@ -51,9 +51,6 @@ export class SlpGraphManager {
     async getTokenGraph({ tokenIdHex, slpMsgDetailsGenesis, forceValid, blockCreated, nft1ChildParentIdHex, txid }: { tokenIdHex: string, slpMsgDetailsGenesis?: SlpTransactionDetails, forceValid?: boolean, blockCreated?: number, nft1ChildParentIdHex?: string, txid?: string }): Promise<SlpTokenGraph|null> {
 
         let filter = TokenFilters();
-        if (!filter.passesAllFilterRules(tokenIdHex)) {
-            throw Error("Token is filtered and will not be processed, even though it's graph may be loaded.")
-        }
 
         if (! this._tokens.has(tokenIdHex)) {
 
@@ -64,6 +61,10 @@ export class SlpGraphManager {
             if (slpMsgDetailsGenesis.transactionType !== SlpTransactionType.GENESIS) {
                 throw Error(`Missing token details for a non-GENESIS transaction (Id: ${tokenIdHex}, txid: ${txid}).`);
             }
+
+            // if (!filter.passesAllFilterRules(slpMsgDetailsGenesis)) {
+            //     return null;
+            // }
 
             let tg = new SlpTokenGraph(slpMsgDetailsGenesis, this, blockCreated!, null);
             tg._loadInitiated = true;
@@ -95,6 +96,10 @@ export class SlpGraphManager {
         } else if (! this._tokens.get(tokenIdHex)!._lazilyLoaded && ! this._tokens.get(tokenIdHex)!._loadInitiated) {
 
             let tg = this._tokens.get(tokenIdHex!);
+
+            // if (!filter.passesAllFilterRules(tg!._tokenDetails)) {
+            //     return null;
+            // }
 
             let lastPrunedHeight = tg!._tokenDbo!._pruningState.pruneHeight;
             let checkpoint = await Info.getBlockCheckpoint();
@@ -320,7 +325,7 @@ export class SlpGraphManager {
                 let tokenIdHex = tokenDbo.tokenDetails.tokenIdHex;
 
                 let filter = TokenFilters();
-                if (!filter.passesAllFilterRules(tokenIdHex)) {
+                if (!filter.passesAllFilterRules(tokenDbo.tokenDetails as any as SlpTransactionDetails)) {
                     throw Error("Token is filtered and will not be processed, even though it's graph may be loaded.")
                 }
 

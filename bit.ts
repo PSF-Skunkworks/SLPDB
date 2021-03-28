@@ -98,11 +98,18 @@ export class Bit {
         } catch (_) {
             return null;
         }
+        let tokenDetails = { ...slpMsg };
         if (slpMsg.transactionType === "GENESIS") {
             slpMsg.tokenIdHex = deserialized.hash;
+            tokenDetails.tokenIdHex = deserialized.hash;
+        } else {
+            if (this._slpGraphManager._tokens.has(slpMsg.tokenIdHex)) {
+                tokenDetails = this._slpGraphManager._tokens.get(slpMsg.tokenIdHex)!._tokenDetails;
+            }
         }
+
         let filter = TokenFilters();
-        if (slpMsg.tokenIdHex && !filter.passesAllFilterRules(slpMsg.tokenIdHex)) {
+        if (slpMsg.tokenIdHex && !filter.passesAllFilterRules(tokenDetails)) {
             console.log("[INFO] SLP txn filtered and ignored:", deserialized.hash);
             return null;
         }
